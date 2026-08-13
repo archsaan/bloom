@@ -160,8 +160,7 @@
   .empty{ color:var(--ink-soft); font-size:0.88rem; padding:10px 2px; }
 
   /* Planner */
-  .week-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:10px; }
-  @media (max-width:760px){ .week-grid{ grid-template-columns:repeat(2,1fr); } }
+  .week-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; }
   .day-col{ background:var(--sky-soft); border-radius:14px; padding:10px; min-height:120px; }
   .day-col h3{ font-size:0.85rem; color:var(--leaf-deep); margin-bottom:8px; }
   .plan-item{ display:flex; align-items:flex-start; gap:6px; margin-bottom:6px; font-size:0.82rem; }
@@ -203,6 +202,15 @@
   .btn-ghost{ background:var(--sky-soft); color:var(--ink); }
   .empty-state{ text-align:center; padding:40px 10px; color:var(--ink-soft); }
 
+  /* Error toast */
+  .toast{
+    position:fixed; left:50%; bottom:90px; transform:translateX(-50%) translateY(20px);
+    background:#B5501E; color:white; padding:12px 18px; border-radius:14px;
+    font-size:0.85rem; font-weight:700; box-shadow:0 8px 24px rgba(0,0,0,0.2);
+    max-width:90%; z-index:100; opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+
   /* Login / config screens */
   .center-screen{
     min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
@@ -230,6 +238,7 @@
 </style>
 </head>
 <body>
+<div class="toast" id="errorToast"></div>
 
 <!-- CONFIG-NEEDED SCREEN -->
 <div class="center-screen" id="configScreen" style="display:none;">
@@ -398,6 +407,16 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+let toastTimer = null;
+function showError(msg){
+  console.error(msg);
+  const toast = document.getElementById('errorToast');
+  toast.textContent = typeof msg === 'string' ? msg : (msg && msg.message) || 'Something went wrong saving that.';
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 5000);
+}
+
 /* ---------- Boot ---------- */
 function isConfigured(){
   return !!(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -423,9 +442,9 @@ async function loadAllData(){
     sb.from('planner_items').select('*').order('created_at', { ascending: true }),
   ]);
 
-  if(kidsRes.error) console.error(kidsRes.error);
-  if(logsRes.error) console.error(logsRes.error);
-  if(plannerRes.error) console.error(plannerRes.error);
+  if(kidsRes.error) showError('Could not load kids: ' + kidsRes.error.message);
+  if(logsRes.error) showError('Could not load logs: ' + logsRes.error.message);
+  if(plannerRes.error) showError('Could not load planner: ' + plannerRes.error.message);
 
   state.kids = (kidsRes.data || []).map(k => ({
     id: k.id, name: k.name, color: k.color, points: k.points, goal: k.goal, reward: k.reward || ''
@@ -662,11 +681,11 @@ async function logBehavior(label, delta){
   const { data, error } = await sb.from('logs').insert({
     kid_id: activeKidId, label, delta, log_date, log_time
   }).select().single();
-  if(error){ console.error(error); return; }
+  if(error){ showError(error.message); return; }
 
   const newPoints = Math.max(0, kid.points + delta);
   const { error: updErr } = await sb.from('kids').update({ points: newPoints }).eq('id', activeKidId);
-  if(updErr) console.error(updErr);
+  if(updErr) showError(updErr.message);
 
   kid.points = newPoints;
   state.logs.unshift({ id: data.id, kidId: activeKidId, date: log_date, label, delta, time: log_time });
@@ -677,13 +696,13 @@ async function removeLog(id){
   const log = state.logs.find(l => l.id === id);
   if(!log) return;
   const { error } = await sb.from('logs').delete().eq('id', id);
-  if(error){ console.error(error); return; }
+  if(error){ showError(error.message); return; }
 
   const kid = kidById(log.kidId);
   if(kid){
     const newPoints = Math.max(0, kid.points - log.delta);
     const { error: updErr } = await sb.from('kids').update({ points: newPoints }).eq('id', kid.id);
-    if(updErr) console.error(updErr);
+    if(updErr) showError(updErr.message);
     kid.points = newPoints;
   }
   state.logs = state.logs.filter(l => l.id !== id);
@@ -703,14 +722,14 @@ async function addPlanItem(day, text){
   const { data, error } = await sb.from('planner_items').insert({
     day, text, done_dates: []
   }).select().single();
-  if(error){ console.error(error); return; }
+  if(error){ showError(error.message); return; }
   if(!state.planner[day]) state.planner[day] = [];
   state.planner[day].push({ id: data.id, text, doneDates: [] });
   renderPlanner();
 }
 async function removePlanItem(day, id){
   const { error } = await sb.from('planner_items').delete().eq('id', id);
-  if(error){ console.error(error); return; }
+  if(error){ showError(error.message); return; }
   state.planner[day] = (state.planner[day]||[]).filter(i => i.id !== id);
   renderPlanner();
 }
@@ -723,7 +742,7 @@ async function togglePlanItem(day, id, checked){
   else{ doneDates = doneDates.filter(d => d !== t); }
 
   const { error } = await sb.from('planner_items').update({ done_dates: doneDates }).eq('id', id);
-  if(error){ console.error(error); return; }
+  if(error){ showError(error.message); return; }
   item.doneDates = doneDates;
   renderPlanner();
 }
@@ -733,7 +752,7 @@ document.getElementById('goalPts').onchange = async (e) => {
   if(!kid) return;
   const goal = Math.max(1, parseInt(e.target.value) || 20);
   const { error } = await sb.from('kids').update({ goal }).eq('id', kid.id);
-  if(error){ console.error(error); return; }
+  if(error){ showError(error.message); return; }
   kid.goal = goal;
   renderGarden();
 };
@@ -742,7 +761,7 @@ document.getElementById('goalReward').onchange = async (e) => {
   if(!kid) return;
   const reward = e.target.value;
   const { error } = await sb.from('kids').update({ reward }).eq('id', kid.id);
-  if(error){ console.error(error); return; }
+  if(error){ showError(error.message); return; }
   kid.reward = reward;
 };
 
@@ -769,7 +788,7 @@ document.getElementById('kidSaveBtn').onclick = async () => {
   const { data, error } = await sb.from('kids').insert({
     name, color: pendingColor, points: 0, goal: 20, reward: ''
   }).select().single();
-  if(error){ console.error(error); return; }
+  if(error){ showError(error.message); return; }
   const kid = { id: data.id, name, color: pendingColor, points: 0, goal: 20, reward: '' };
   state.kids.push(kid);
   activeKidId = kid.id;
