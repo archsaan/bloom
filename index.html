@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bloom — Kids Behavior Tracker & Planner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap');
+
+  :root{
+    --sky:#EAF4F1;
+    --sky-deep:#D6EAE5;
+    --card:#FFFFFF;
+    --ink:#2B3A42;
+    --ink-soft:#5B6B70;
+    --leaf:#4C9A6A;
+    --leaf-deep:#357A4F;
+    --sun:#FFC857;
+    --sun-deep:#E8A93A;
+    --coral:#E8734A;
+    --coral-soft:#F7DCCF;
+    --leaf-soft:#DCEFE0;
+    --sky-soft:#DCEEF7;
+    --radius:20px;
+    --shadow: 0 8px 24px rgba(43,58,66,0.08);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: var(--sky);
+    font-family:'Nunito', sans-serif;
+    color:var(--ink);
+    min-height:100vh;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y:none;
+  }
+  h1,h2,h3, .display{ font-family:'Baloo 2', sans-serif; font-weight:700; margin:0; }
+  .app{
+    max-width:460px; margin:0 auto; min-height:100vh;
+    background: radial-gradient(circle at 20% 0%, var(--sky-deep), var(--sky) 60%);
+    position:relative; box-shadow: 0 0 60px rgba(43,58,66,0.10);
+    display:flex; flex-direction:column;
+  }
+  .wrap{ flex:1; padding:0 16px 100px; }
+
+  /* Header */
+  header.top{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: max(14px, env(safe-area-inset-top)) 16px 14px;
+    position:sticky; top:0; z-index:20;
+    background:rgba(234,244,241,0.88); backdrop-filter: blur(10px);
+    border-bottom:1px solid rgba(43,58,66,0.06);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand .mark{ width:34px; height:34px; }
+  .brand h1{ font-size:1.3rem; color:var(--leaf-deep); letter-spacing:0.2px; }
+  .brand .tag{ font-size:0.72rem; color:var(--ink-soft); font-weight:600; margin-top:-2px;}
+  .header-right{ display:flex; align-items:center; gap:8px; }
+  .status-pill{
+    display:flex; align-items:center; gap:6px;
+    background:var(--card); border-radius:999px; padding:6px 12px;
+    box-shadow:var(--shadow); font-size:0.78rem; font-weight:800; color:var(--leaf-deep);
+  }
+  .status-pill .dot{ width:7px; height:7px; border-radius:50%; background:var(--sun-deep); }
+  .icon-btn{
+    background:var(--card); border:none; border-radius:50%; width:34px; height:34px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:var(--shadow);
+  }
+  .icon-btn svg{ width:16px; height:16px; stroke:var(--ink-soft); fill:none; stroke-width:2; }
+
+  /* Kid strip */
+  .kid-strip{ display:flex; gap:10px; overflow-x:auto; padding:16px 2px 6px; margin-bottom:6px; scrollbar-width:none;}
+  .kid-strip::-webkit-scrollbar{ display:none; }
+  .kid-chip{
+    flex:0 0 auto; display:flex; align-items:center; gap:8px;
+    background:var(--card); border:2px solid transparent; border-radius:999px;
+    padding:6px 14px 6px 6px; cursor:pointer; box-shadow:var(--shadow);
+    transition: border-color .15s ease, transform .15s ease;
+  }
+  .kid-chip:hover{ transform: translateY(-1px); }
+  .kid-chip.active{ border-color: var(--leaf); }
+  .kid-avatar{
+    width:32px; height:32px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    color:white; font-family:'Baloo 2'; font-weight:700; font-size:0.95rem;
+  }
+  .kid-chip .name{ font-weight:800; font-size:0.92rem; }
+  .kid-chip .pts{ font-size:0.75rem; color:var(--ink-soft); font-weight:700;}
+  .add-kid-chip{
+    flex:0 0 auto; display:flex; align-items:center; gap:6px;
+    background:transparent; border:2px dashed #B9CFC9; border-radius:999px;
+    padding:8px 16px; cursor:pointer; color:var(--ink-soft); font-weight:700; font-size:0.85rem;
+  }
+
+  /* Bottom tab bar */
+  nav.tabs{
+    position:sticky; bottom:0; left:0; right:0; z-index:20;
+    display:flex; justify-content:space-around; align-items:center;
+    background:rgba(255,255,255,0.92); backdrop-filter: blur(12px);
+    border-top:1px solid rgba(43,58,66,0.07);
+    padding: 8px 6px max(10px, env(safe-area-inset-bottom));
+    box-shadow: 0 -6px 20px rgba(43,58,66,0.06);
+  }
+  nav.tabs button{
+    border:none; background:transparent; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:6px 14px; border-radius:14px; flex:1; max-width:110px;
+    font-family:'Baloo 2'; font-weight:600; font-size:0.68rem; color:#9AAAA6;
+    transition: color .15s ease, background .15s ease, transform .12s ease;
+  }
+  nav.tabs button svg{ width:22px; height:22px; stroke:#9AAAA6; fill:none; stroke-width:2; transition: stroke .15s ease; }
+  nav.tabs button.active{ color:var(--leaf-deep); background:var(--leaf-soft); }
+  nav.tabs button.active svg{ stroke:var(--leaf-deep); }
+  nav.tabs button:active{ transform: scale(0.94); }
+
+  .panel{ display:none; }
+  .panel.active{ display:block; animation: fadein .25s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+
+  .card{ background:var(--card); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); margin-bottom:16px; }
+  .card h2{ font-size:1.1rem; margin-bottom:4px; }
+  .card .sub{ color:var(--ink-soft); font-size:0.85rem; margin-bottom:14px; }
+
+  /* Today panel */
+  .behavior-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .behavior-btn{
+    border:none; border-radius:14px; padding:12px 10px; cursor:pointer;
+    font-family:'Nunito'; font-weight:700; font-size:0.87rem; text-align:left;
+    display:flex; flex-direction:column; gap:4px;
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .behavior-btn:active{ transform: scale(0.96); }
+  .behavior-btn.pos{ background:var(--leaf-soft); color:var(--leaf-deep); }
+  .behavior-btn.pos:hover{ box-shadow:0 4px 12px rgba(76,154,106,0.25); }
+  .behavior-btn.neg{ background:var(--coral-soft); color:#B5501E; }
+  .behavior-btn.neg:hover{ box-shadow:0 4px 12px rgba(232,115,74,0.25); }
+  .behavior-btn .delta{ font-size:0.78rem; opacity:0.85; }
+
+  .note-row{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .note-row input[type=text]{
+    flex:1; min-width:180px; border:2px solid var(--sky-deep); border-radius:12px;
+    padding:10px 12px; font-family:'Nunito'; font-size:0.9rem; outline:none;
+  }
+  .note-row input[type=text]:focus{ border-color:var(--leaf); }
+  .note-row button{
+    border:none; background:var(--sun); color:#5B4207; font-weight:800;
+    border-radius:12px; padding:10px 16px; cursor:pointer; font-family:'Baloo 2';
+  }
+
+  .log-list{ margin-top:16px; display:flex; flex-direction:column; gap:8px; max-height:260px; overflow-y:auto; }
+  .log-item{ display:flex; align-items:center; justify-content:space-between; background:var(--sky-soft); border-radius:12px; padding:8px 12px; font-size:0.85rem; }
+  .log-item .left{ display:flex; align-items:center; gap:8px; }
+  .log-item .badge{ font-weight:800; padding:2px 8px; border-radius:999px; font-size:0.75rem; }
+  .log-item .badge.pos{ background:var(--leaf-soft); color:var(--leaf-deep); }
+  .log-item .badge.neg{ background:var(--coral-soft); color:#B5501E; }
+  .log-item .time{ color:var(--ink-soft); font-size:0.75rem; }
+  .log-item .del{ background:none; border:none; color:#B9C4C2; cursor:pointer; font-size:0.9rem; }
+  .empty{ color:var(--ink-soft); font-size:0.88rem; padding:10px 2px; }
+
+  /* Planner */
+  .week-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:10px; }
+  @media (max-width:760px){ .week-grid{ grid-template-columns:repeat(2,1fr); } }
+  .day-col{ background:var(--sky-soft); border-radius:14px; padding:10px; min-height:120px; }
+  .day-col h3{ font-size:0.85rem; color:var(--leaf-deep); margin-bottom:8px; }
+  .plan-item{ display:flex; align-items:flex-start; gap:6px; margin-bottom:6px; font-size:0.82rem; }
+  .plan-item input[type=checkbox]{ margin-top:2px; accent-color:var(--leaf); }
+  .plan-item.done label{ text-decoration:line-through; color:var(--ink-soft); }
+  .plan-item .rm{ background:none; border:none; color:#B9C4C2; cursor:pointer; margin-left:auto; font-size:0.8rem; }
+  .add-plan{ display:flex; gap:4px; margin-top:6px; }
+  .add-plan input{ flex:1; min-width:0; border:1px solid #C6DCD5; border-radius:8px; padding:5px 7px; font-size:0.78rem; font-family:'Nunito'; }
+  .add-plan button{ border:none; background:var(--leaf); color:white; border-radius:8px; padding:5px 9px; cursor:pointer; font-size:0.8rem; font-weight:700; }
+
+  /* Garden panel */
+  .garden-top{ display:flex; gap:24px; align-items:center; flex-wrap:wrap; }
+  .plant-stage{ width:120px; height:150px; flex:0 0 auto; }
+  .goal-row{ display:flex; align-items:center; gap:10px; margin-top:10px; }
+  .goal-row input[type=number]{ width:70px; padding:6px 8px; border-radius:8px; border:1px solid #C6DCD5; font-family:'Nunito'; }
+  .goal-row input[type=text]{ flex:1; padding:6px 8px; border-radius:8px; border:1px solid #C6DCD5; font-family:'Nunito'; }
+  .progress-track{ background:var(--sky-soft); border-radius:999px; height:14px; width:100%; overflow:hidden; margin:10px 0; }
+  .progress-fill{ background:linear-gradient(90deg, var(--leaf), var(--sun)); height:100%; border-radius:999px; transition:width .4s ease; }
+
+  .chart{ display:flex; align-items:flex-end; gap:10px; height:140px; margin-top:18px; }
+  .chart .bar-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .bar-stack{ width:100%; max-width:34px; display:flex; flex-direction:column-reverse; height:100px; justify-content:flex-start; gap:2px; }
+  .bar-pos{ background:var(--leaf); border-radius:4px 4px 0 0; width:100%; }
+  .bar-neg{ background:var(--coral); border-radius:0 0 4px 4px; width:100%; }
+  .bar-col .lbl{ font-size:0.72rem; color:var(--ink-soft); font-weight:700; }
+
+  /* Modal */
+  .overlay{ position:fixed; inset:0; background:rgba(43,58,66,0.35); display:none; align-items:center; justify-content:center; z-index:50; padding:16px;}
+  .overlay.show{ display:flex; }
+  .modal{ background:var(--card); border-radius:18px; padding:22px; width:100%; max-width:340px; box-shadow:var(--shadow); }
+  .modal h3{ margin-bottom:12px; }
+  .modal input[type=text]{ width:100%; padding:10px 12px; border-radius:10px; border:2px solid var(--sky-deep); margin-bottom:10px; font-family:'Nunito'; font-size:0.9rem; }
+  .swatches{ display:flex; gap:8px; margin-bottom:14px; }
+  .swatch{ width:28px; height:28px; border-radius:50%; cursor:pointer; border:3px solid transparent; }
+  .swatch.sel{ border-color:var(--ink); }
+  .modal-actions{ display:flex; gap:8px; justify-content:flex-end; }
+  .modal-actions button{ border:none; padding:9px 16px; border-radius:10px; font-weight:800; font-family:'Baloo 2'; cursor:pointer; }
+  .btn-primary{ background:var(--leaf); color:white; }
+  .btn-ghost{ background:var(--sky-soft); color:var(--ink); }
+  .empty-state{ text-align:center; padding:40px 10px; color:var(--ink-soft); }
+
+  /* Login / config screens */
+  .center-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    background: radial-gradient(circle at 20% 0%, var(--sky-deep), var(--sky) 60%);
+  }
+  .login-card{ background:var(--card); border-radius:24px; padding:32px 26px; max-width:360px; width:100%; box-shadow:var(--shadow); text-align:center; }
+  .login-card .mark{ width:46px; height:46px; margin-bottom:6px; }
+  .login-card h1{ font-size:1.5rem; color:var(--leaf-deep); margin-bottom:4px; }
+  .login-card p{ color:var(--ink-soft); font-size:0.88rem; margin-bottom:20px; line-height:1.4; }
+  .login-card input[type=email]{
+    width:100%; padding:12px 14px; border-radius:12px; border:2px solid var(--sky-deep);
+    font-family:'Nunito'; font-size:0.92rem; margin-bottom:12px; outline:none;
+  }
+  .login-card input[type=email]:focus{ border-color:var(--leaf); }
+  .login-card button.primary{
+    width:100%; border:none; background:var(--leaf); color:white; font-family:'Baloo 2';
+    font-weight:700; font-size:0.95rem; padding:12px; border-radius:12px; cursor:pointer;
+  }
+  .login-card button.primary:disabled{ opacity:0.6; cursor:default; }
+  .login-msg{ margin-top:14px; font-size:0.84rem; color:var(--leaf-deep); font-weight:700; min-height:18px; }
+  .config-card{ background:var(--card); border-radius:24px; padding:28px; max-width:420px; width:100%; box-shadow:var(--shadow); }
+  .config-card h2{ color:var(--coral); font-size:1.1rem; margin-bottom:10px; }
+  .config-card p{ font-size:0.86rem; color:var(--ink-soft); line-height:1.5; margin-bottom:10px; }
+  .config-card code{ background:var(--sky-soft); padding:2px 6px; border-radius:6px; font-size:0.82rem; }
+</style>
+</head>
+<body>
+
+<!-- CONFIG-NEEDED SCREEN -->
+<div class="center-screen" id="configScreen" style="display:none;">
+  <div class="config-card">
+    <h2>Setup needed</h2>
+    <p>This copy of Bloom isn't connected to a database yet. Open this file's code and replace the two placeholders near the top of the <code>&lt;script&gt;</code> tag:</p>
+    <p><code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code></p>
+    <p>You'll find both on your Supabase project under <b>Project Settings → API</b>. See the setup guide for the full walkthrough, including the SQL to create your tables.</p>
+  </div>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div class="center-screen" id="loginScreen" style="display:none;">
+  <div class="login-card">
+    <svg class="mark" viewBox="0 0 48 48" fill="none" style="margin:0 auto;">
+      <path d="M24 40 C24 40 24 22 24 16 C24 10 30 6 36 8 C36 8 34 16 28 18 C28 18 24 20 24 26" fill="#4C9A6A"/>
+      <path d="M24 26 C24 26 22 18 16 16 C10 14 6 20 6 20 C6 20 10 26 16 26 C20 26 24 26 24 26 Z" fill="#357A4F"/>
+      <rect x="21" y="24" width="6" height="16" rx="3" fill="#357A4F"/>
+    </svg>
+    <h1>Bloom</h1>
+    <p>Sign in to track your kids' day from any device. No password — we'll email you a magic link.</p>
+    <input type="email" id="loginEmail" placeholder="you@example.com">
+    <button class="primary" id="loginBtn">Send magic link</button>
+    <div class="login-msg" id="loginMsg"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app" id="appScreen" style="display:none;">
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 48 48" fill="none">
+        <path d="M24 40 C24 40 24 22 24 16 C24 10 30 6 36 8 C36 8 34 16 28 18 C28 18 24 20 24 26" fill="#4C9A6A"/>
+        <path d="M24 26 C24 26 22 18 16 16 C10 14 6 20 6 20 C6 20 10 26 16 26 C20 26 24 26 24 26 Z" fill="#357A4F"/>
+        <rect x="21" y="24" width="6" height="16" rx="3" fill="#357A4F"/>
+      </svg>
+      <div>
+        <h1>Bloom</h1>
+        <div class="tag">behavior tracker &amp; planner</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-pill" id="dateChip"><span class="dot"></span><span id="dateChipText"></span></div>
+      <button class="icon-btn" id="signOutBtn" title="Sign out">
+        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+      </button>
+    </div>
+  </header>
+
+<div class="wrap">
+  <div class="kid-strip" id="kidStrip"></div>
+
+  <!-- TODAY -->
+  <section class="panel active" id="panel-today">
+    <div id="todayEmpty" class="card empty-state" style="display:none;">
+      Add your first kid to start logging their day 🌱
+    </div>
+    <div id="todayContent">
+      <div class="card">
+        <h2>Log a moment</h2>
+        <div class="sub">Tap what happened — points add up automatically.</div>
+        <div class="behavior-grid" id="posGrid"></div>
+        <div class="behavior-grid" id="negGrid" style="margin-top:10px;"></div>
+        <div class="note-row">
+          <input type="text" id="noteInput" placeholder="Add a quick note (optional)">
+          <button id="noteAddBtn">Log note</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Today's log</h2>
+        <div class="sub" id="todayDateLabel"></div>
+        <div class="log-list" id="logList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLANNER -->
+  <section class="panel" id="panel-planner">
+    <div class="card">
+      <h2>Weekly routine</h2>
+      <div class="sub">Set goals or chores for each day. Check them off as they're done.</div>
+      <div class="week-grid" id="weekGrid"></div>
+    </div>
+  </section>
+
+  <!-- GARDEN -->
+  <section class="panel" id="panel-garden">
+    <div id="gardenEmpty" class="card empty-state" style="display:none;">
+      Add a kid to grow their garden 🌼
+    </div>
+    <div id="gardenContent">
+      <div class="card">
+        <h2 id="gardenKidName">Garden</h2>
+        <div class="sub">Points grow the plant. Reach the goal to earn the reward.</div>
+        <div class="garden-top">
+          <div class="plant-stage" id="plantStage"></div>
+          <div style="flex:1; min-width:220px;">
+            <div id="ptsLabel" style="font-family:'Baloo 2'; font-size:1.3rem; color:var(--leaf-deep);"></div>
+            <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+            <div class="goal-row">
+              <span style="font-size:0.85rem; color:var(--ink-soft);">Goal:</span>
+              <input type="number" id="goalPts" min="1" value="20">
+              <span style="font-size:0.85rem; color:var(--ink-soft);">pts →</span>
+              <input type="text" id="goalReward" placeholder="reward, e.g. movie night">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Last 7 days</h2>
+        <div class="sub">Positive (green) vs. tricky (coral) moments per day.</div>
+        <div class="chart" id="chart"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+  <nav class="tabs">
+    <button data-tab="today" class="active">
+      <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      Today
+    </button>
+    <button data-tab="planner">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      Planner
+    </button>
+    <button data-tab="garden">
+      <svg viewBox="0 0 24 24"><path d="M12 21c0-6 0-12 0-16"/><path d="M12 13c-3 0-6-2-6-6 4 0 6 2 6 6z"/><path d="M12 9c3 0 6-2 6-6-4 0-6 2-6 6z"/></svg>
+      Garden
+    </button>
+  </nav>
+</div>
+
+<!-- Add kid modal -->
+<div class="overlay" id="kidOverlay">
+  <div class="modal">
+    <h3>Add a kid</h3>
+    <input type="text" id="kidNameInput" placeholder="Name">
+    <div class="swatches" id="colorSwatches"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="kidCancelBtn">Cancel</button>
+      <button class="btn-primary" id="kidSaveBtn">Add</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   SUPABASE CONFIG — replace these two values with your own
+   (Supabase project → Project Settings → API)
+   ========================================================= */
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+/* ========================================================= */
+
+const COLORS = ['#4C9A6A','#3B8FA8','#E8A93A','#E8734A','#8B6FC9','#D4599B'];
+const POS_BEHAVIORS = [
+  {label:'Listened well', delta:2},
+  {label:'Shared kindly', delta:2},
+  {label:'Finished chores', delta:2},
+  {label:'Used kind words', delta:2},
+  {label:'Tried something new', delta:3},
+];
+const NEG_BEHAVIORS = [
+  {label:"Didn't listen", delta:-1},
+  {label:'Big tantrum', delta:-2},
+  {label:'Unkind words', delta:-1},
+  {label:'Skipped a chore', delta:-1},
+];
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+let supabase = null;
+let state = { kids: [], logs: [], planner: {} };
+let activeKidId = null;
+let activeTab = 'today';
+let pendingColor = COLORS[0];
+let currentUserId = null;
+
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function kidById(id){ return state.kids.find(k => k.id === id); }
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------- Boot ---------- */
+function isConfigured(){
+  return SUPABASE_URL && SUPABASE_ANON_KEY &&
+    !SUPABASE_URL.includes('YOUR_SUPABASE') && !SUPABASE_ANON_KEY.includes('YOUR_SUPABASE');
+}
+
+async function boot(){
+  if(!isConfigured()){
+    document.getElementById('configScreen').style.display = 'flex';
+    return;
+  }
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if(session){ await enterApp(session); } else { showLogin(); }
+
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if(session && !currentUserId){ await enterApp(session); }
+    if(!session){ showLogin(); }
+  });
+}
+
+function showLogin(){
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('appScreen').style.display = 'none';
+  currentUserId = null;
+}
+
+async function enterApp(session){
+  currentUserId = session.user.id;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'flex';
+  document.getElementById('dateChipText').textContent =
+    new Date().toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'});
+  await loadAllData();
+}
+
+document.getElementById('loginBtn').onclick = async () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const msg = document.getElementById('loginMsg');
+  if(!email){ msg.textContent = 'Enter your email first.'; return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+  btn.disabled = false; btn.textContent = 'Send magic link';
+  msg.textContent = error ? ('Error: ' + error.message) : 'Check your email for a login link ✉️';
+};
+document.getElementById('loginEmail').onkeydown = (e) => { if(e.key === 'Enter') document.getElementById('loginBtn').click(); };
+
+document.getElementById('signOutBtn').onclick = async () => {
+  await supabase.auth.signOut();
+};
+
+/* ---------- Data loading ---------- */
+async function loadAllData(){
+  const [kidsRes, logsRes, plannerRes] = await Promise.all([
+    supabase.from('kids').select('*').order('created_at', { ascending: true }),
+    supabase.from('logs').select('*').order('created_at', { ascending: false }).limit(500),
+    supabase.from('planner_items').select('*').order('created_at', { ascending: true }),
+  ]);
+
+  if(kidsRes.error) console.error(kidsRes.error);
+  if(logsRes.error) console.error(logsRes.error);
+  if(plannerRes.error) console.error(plannerRes.error);
+
+  state.kids = (kidsRes.data || []).map(k => ({
+    id: k.id, name: k.name, color: k.color, points: k.points, goal: k.goal, reward: k.reward || ''
+  }));
+  state.logs = (logsRes.data || []).map(l => ({
+    id: l.id, kidId: l.kid_id, date: l.log_date, label: l.label, delta: l.delta, time: l.log_time
+  }));
+  state.planner = {};
+  DAYS.forEach(d => state.planner[d] = []);
+  (plannerRes.data || []).forEach(p => {
+    if(!state.planner[p.day]) state.planner[p.day] = [];
+    state.planner[p.day].push({ id: p.id, text: p.text, doneDates: p.done_dates || [] });
+  });
+
+  if(!activeKidId || !kidById(activeKidId)){
+    activeKidId = state.kids.length ? state.kids[0].id : null;
+  }
+  renderAll();
+}
+
+/* ---------- Rendering ---------- */
+function renderAll(){
+  renderKidStrip();
+  renderToday();
+  renderPlanner();
+  renderGarden();
+}
+
+function renderKidStrip(){
+  const strip = document.getElementById('kidStrip');
+  strip.innerHTML = '';
+  state.kids.forEach(k => {
+    const chip = document.createElement('div');
+    chip.className = 'kid-chip' + (k.id === activeKidId ? ' active' : '');
+    chip.innerHTML = `
+      <div class="kid-avatar" style="background:${k.color}">${k.name.charAt(0).toUpperCase()}</div>
+      <div>
+        <div class="name">${escapeHtml(k.name)}</div>
+        <div class="pts">${k.points} pts</div>
+      </div>`;
+    chip.onclick = () => { activeKidId = k.id; renderAll(); };
+    strip.appendChild(chip);
+  });
+  const addChip = document.createElement('div');
+  addChip.className = 'add-kid-chip';
+  addChip.innerHTML = '+ Add kid';
+  addChip.onclick = openKidModal;
+  strip.appendChild(addChip);
+}
+
+function renderToday(){
+  const hasKids = state.kids.length > 0;
+  document.getElementById('todayEmpty').style.display = hasKids ? 'none' : 'block';
+  document.getElementById('todayContent').style.display = hasKids ? 'block' : 'none';
+  if(!hasKids) return;
+
+  document.getElementById('todayDateLabel').textContent =
+    new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
+
+  const posGrid = document.getElementById('posGrid');
+  const negGrid = document.getElementById('negGrid');
+  posGrid.innerHTML = ''; negGrid.innerHTML = '';
+  POS_BEHAVIORS.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'behavior-btn pos';
+    btn.innerHTML = `${escapeHtml(b.label)}<span class="delta">+${b.delta} pts</span>`;
+    btn.onclick = () => logBehavior(b.label, b.delta);
+    posGrid.appendChild(btn);
+  });
+  NEG_BEHAVIORS.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'behavior-btn neg';
+    btn.innerHTML = `${escapeHtml(b.label)}<span class="delta">${b.delta} pts</span>`;
+    btn.onclick = () => logBehavior(b.label, b.delta);
+    negGrid.appendChild(btn);
+  });
+
+  const list = document.getElementById('logList');
+  const today = todayStr();
+  const todays = state.logs.filter(l => l.kidId === activeKidId && l.date === today)
+    .sort((a,b)=>b.time.localeCompare(a.time));
+  list.innerHTML = '';
+  if(!todays.length){ list.innerHTML = '<div class="empty">Nothing logged yet today.</div>'; }
+  todays.forEach(l => {
+    const item = document.createElement('div');
+    item.className = 'log-item';
+    const badgeClass = l.delta > 0 ? 'pos' : (l.delta < 0 ? 'neg' : '');
+    const badgeText = l.delta === 0 ? 'note' : (l.delta > 0 ? '+'+l.delta : l.delta);
+    item.innerHTML = `
+      <div class="left">
+        <span class="badge ${badgeClass}">${badgeText}</span>
+        <span>${escapeHtml(l.label)}</span>
+      </div>
+      <div class="left">
+        <span class="time">${l.time}</span>
+        <button class="del" title="Remove">✕</button>
+      </div>`;
+    item.querySelector('.del').onclick = () => removeLog(l.id);
+    list.appendChild(item);
+  });
+}
+
+function renderPlanner(){
+  const grid = document.getElementById('weekGrid');
+  grid.innerHTML = '';
+  const today = todayStr();
+  DAYS.forEach(day => {
+    const col = document.createElement('div');
+    col.className = 'day-col';
+    const items = (state.planner[day] || []);
+    let itemsHtml = '';
+    items.forEach(it => {
+      const done = it.doneDates && it.doneDates.includes(today);
+      itemsHtml += `<div class="plan-item ${done?'done':''}" data-id="${it.id}">
+        <input type="checkbox" ${done?'checked':''}>
+        <label>${escapeHtml(it.text)}</label>
+        <button class="rm">✕</button>
+      </div>`;
+    });
+    col.innerHTML = `
+      <h3>${day}</h3>
+      <div class="plan-items">${itemsHtml}</div>
+      <div class="add-plan">
+        <input type="text" placeholder="Add task">
+        <button>+</button>
+      </div>`;
+    grid.appendChild(col);
+
+    col.querySelectorAll('.plan-item').forEach(row => {
+      const id = row.getAttribute('data-id');
+      row.querySelector('input[type=checkbox]').onchange = (e) => togglePlanItem(day, id, e.target.checked);
+      row.querySelector('.rm').onclick = () => removePlanItem(day, id);
+    });
+    const addInput = col.querySelector('.add-plan input');
+    const addBtn = col.querySelector('.add-plan button');
+    const doAdd = () => {
+      const val = addInput.value.trim();
+      if(!val) return;
+      addPlanItem(day, val);
+      addInput.value = '';
+    };
+    addBtn.onclick = doAdd;
+    addInput.onkeydown = (e) => { if(e.key === 'Enter') doAdd(); };
+  });
+}
+
+function renderGarden(){
+  const hasKids = state.kids.length > 0;
+  document.getElementById('gardenEmpty').style.display = hasKids ? 'none' : 'block';
+  document.getElementById('gardenContent').style.display = hasKids ? 'block' : 'none';
+  if(!hasKids) return;
+
+  const kid = kidById(activeKidId);
+  if(!kid) return;
+  document.getElementById('gardenKidName').textContent = kid.name + "'s garden";
+  document.getElementById('ptsLabel').textContent = kid.points + ' points';
+  const goal = kid.goal || 20;
+  document.getElementById('goalPts').value = goal;
+  document.getElementById('goalReward').value = kid.reward || '';
+  const pct = Math.max(0, Math.min(100, Math.round((kid.points / goal) * 100)));
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('plantStage').innerHTML = plantSvg(pct, kid.color);
+
+  const chart = document.getElementById('chart');
+  chart.innerHTML = '';
+  const dates = [];
+  for(let i = 6; i >= 0; i--){
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push(d.toISOString().slice(0,10));
+  }
+  const maxCount = Math.max(1, ...dates.map(d => {
+    const dayLogs = state.logs.filter(l => l.kidId === activeKidId && l.date === d);
+    return Math.max(dayLogs.filter(l=>l.delta>0).length, dayLogs.filter(l=>l.delta<0).length);
+  }));
+  dates.forEach(d => {
+    const dayLogs = state.logs.filter(l => l.kidId === activeKidId && l.date === d);
+    const pos = dayLogs.filter(l => l.delta > 0).length;
+    const neg = dayLogs.filter(l => l.delta < 0).length;
+    const col = document.createElement('div');
+    col.className = 'bar-col';
+    const posH = Math.round((pos / maxCount) * 100);
+    const negH = Math.round((neg / maxCount) * 100);
+    const label = new Date(d).toLocaleDateString(undefined,{weekday:'short'}).slice(0,2);
+    col.innerHTML = `
+      <div class="bar-stack">
+        <div class="bar-neg" style="height:${negH}%"></div>
+        <div class="bar-pos" style="height:${posH}%"></div>
+      </div>
+      <div class="lbl">${label}</div>`;
+    chart.appendChild(col);
+  });
+}
+
+function plantSvg(pct, color){
+  const c = color || '#4C9A6A';
+  let inner = `<rect x="52" y="120" width="16" height="30" rx="4" fill="#C8956B"/>`;
+  if(pct < 25){
+    inner += `<path d="M60 120 C60 110 60 100 60 100" stroke="${c}" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <ellipse cx="60" cy="98" rx="8" ry="5" fill="${c}"/>`;
+  } else if(pct < 50){
+    inner += `<path d="M60 120 C60 100 60 80 60 70" stroke="${c}" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <ellipse cx="60" cy="68" rx="9" ry="6" fill="${c}"/>
+      <path d="M60 100 C50 96 44 88 44 88 C44 88 50 100 60 100" fill="${c}"/>`;
+  } else if(pct < 75){
+    inner += `<path d="M60 120 C60 90 60 60 60 45" stroke="${c}" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <path d="M60 95 C50 90 42 82 42 82 C42 82 50 96 60 96" fill="${c}"/>
+      <path d="M60 78 C70 73 78 65 78 65 C78 65 70 80 60 80" fill="${c}"/>
+      <circle cx="60" cy="42" r="10" fill="#F2B6C6"/>`;
+  } else {
+    inner += `<path d="M60 120 C60 85 60 55 60 40" stroke="${c}" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <path d="M60 92 C48 87 40 78 40 78 C40 78 48 94 60 94" fill="${c}"/>
+      <path d="M60 72 C72 66 80 57 80 57 C80 57 72 74 60 74" fill="${c}"/>
+      <g>
+        <circle cx="60" cy="34" r="9" fill="#FFC857"/>
+        <circle cx="48" cy="38" r="8" fill="#F2B6C6"/>
+        <circle cx="72" cy="38" r="8" fill="#F2B6C6"/>
+        <circle cx="52" cy="24" r="8" fill="#F2B6C6"/>
+        <circle cx="68" cy="24" r="8" fill="#F2B6C6"/>
+        <circle cx="60" cy="30" r="7" fill="#E8A93A"/>
+      </g>`;
+  }
+  return `<svg viewBox="0 0 120 150" width="100%" height="100%">${inner}</svg>`;
+}
+
+/* ---------- Actions (write through to Supabase) ---------- */
+async function logBehavior(label, delta){
+  if(!activeKidId) return;
+  const kid = kidById(activeKidId);
+  const now = new Date();
+  const log_date = todayStr();
+  const log_time = now.toTimeString().slice(0,5);
+
+  const { data, error } = await supabase.from('logs').insert({
+    kid_id: activeKidId, user_id: currentUserId, label, delta, log_date, log_time
+  }).select().single();
+  if(error){ console.error(error); return; }
+
+  const newPoints = Math.max(0, kid.points + delta);
+  const { error: updErr } = await supabase.from('kids').update({ points: newPoints }).eq('id', activeKidId);
+  if(updErr) console.error(updErr);
+
+  kid.points = newPoints;
+  state.logs.unshift({ id: data.id, kidId: activeKidId, date: log_date, label, delta, time: log_time });
+  renderKidStrip(); renderToday(); renderGarden();
+}
+
+async function removeLog(id){
+  const log = state.logs.find(l => l.id === id);
+  if(!log) return;
+  const { error } = await supabase.from('logs').delete().eq('id', id);
+  if(error){ console.error(error); return; }
+
+  const kid = kidById(log.kidId);
+  if(kid){
+    const newPoints = Math.max(0, kid.points - log.delta);
+    const { error: updErr } = await supabase.from('kids').update({ points: newPoints }).eq('id', kid.id);
+    if(updErr) console.error(updErr);
+    kid.points = newPoints;
+  }
+  state.logs = state.logs.filter(l => l.id !== id);
+  renderKidStrip(); renderToday(); renderGarden();
+}
+
+document.getElementById('noteAddBtn').onclick = () => {
+  const input = document.getElementById('noteInput');
+  const val = input.value.trim();
+  if(!val || !activeKidId) return;
+  logBehavior(val, 0);
+  input.value = '';
+};
+document.getElementById('noteInput').onkeydown = (e) => { if(e.key === 'Enter') document.getElementById('noteAddBtn').click(); };
+
+async function addPlanItem(day, text){
+  const { data, error } = await supabase.from('planner_items').insert({
+    user_id: currentUserId, day, text, done_dates: []
+  }).select().single();
+  if(error){ console.error(error); return; }
+  if(!state.planner[day]) state.planner[day] = [];
+  state.planner[day].push({ id: data.id, text, doneDates: [] });
+  renderPlanner();
+}
+async function removePlanItem(day, id){
+  const { error } = await supabase.from('planner_items').delete().eq('id', id);
+  if(error){ console.error(error); return; }
+  state.planner[day] = (state.planner[day]||[]).filter(i => i.id !== id);
+  renderPlanner();
+}
+async function togglePlanItem(day, id, checked){
+  const item = (state.planner[day]||[]).find(i => i.id === id);
+  if(!item) return;
+  const t = todayStr();
+  let doneDates = item.doneDates || [];
+  if(checked){ if(!doneDates.includes(t)) doneDates = [...doneDates, t]; }
+  else{ doneDates = doneDates.filter(d => d !== t); }
+
+  const { error } = await supabase.from('planner_items').update({ done_dates: doneDates }).eq('id', id);
+  if(error){ console.error(error); return; }
+  item.doneDates = doneDates;
+  renderPlanner();
+}
+
+document.getElementById('goalPts').onchange = async (e) => {
+  const kid = kidById(activeKidId);
+  if(!kid) return;
+  const goal = Math.max(1, parseInt(e.target.value) || 20);
+  const { error } = await supabase.from('kids').update({ goal }).eq('id', kid.id);
+  if(error){ console.error(error); return; }
+  kid.goal = goal;
+  renderGarden();
+};
+document.getElementById('goalReward').onchange = async (e) => {
+  const kid = kidById(activeKidId);
+  if(!kid) return;
+  const reward = e.target.value;
+  const { error } = await supabase.from('kids').update({ reward }).eq('id', kid.id);
+  if(error){ console.error(error); return; }
+  kid.reward = reward;
+};
+
+/* ---------- Kid modal ---------- */
+function openKidModal(){
+  pendingColor = COLORS[state.kids.length % COLORS.length];
+  const sw = document.getElementById('colorSwatches');
+  sw.innerHTML = '';
+  COLORS.forEach(c => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (c === pendingColor ? ' sel' : '');
+    s.style.background = c;
+    s.onclick = () => { pendingColor = c; sw.querySelectorAll('.swatch').forEach(x=>x.classList.remove('sel')); s.classList.add('sel'); };
+    sw.appendChild(s);
+  });
+  document.getElementById('kidNameInput').value = '';
+  document.getElementById('kidOverlay').classList.add('show');
+  document.getElementById('kidNameInput').focus();
+}
+document.getElementById('kidCancelBtn').onclick = () => document.getElementById('kidOverlay').classList.remove('show');
+document.getElementById('kidSaveBtn').onclick = async () => {
+  const name = document.getElementById('kidNameInput').value.trim();
+  if(!name) return;
+  const { data, error } = await supabase.from('kids').insert({
+    user_id: currentUserId, name, color: pendingColor, points: 0, goal: 20, reward: ''
+  }).select().single();
+  if(error){ console.error(error); return; }
+  const kid = { id: data.id, name, color: pendingColor, points: 0, goal: 20, reward: '' };
+  state.kids.push(kid);
+  activeKidId = kid.id;
+  document.getElementById('kidOverlay').classList.remove('show');
+  renderAll();
+};
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll('nav.tabs button').forEach(btn => {
+  btn.onclick = () => {
+    activeTab = btn.getAttribute('data-tab');
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + activeTab).classList.add('active');
+  };
+});
+
+boot();
+</script>
+</body>
+</html>
