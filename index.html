@@ -201,6 +201,13 @@
   .btn-primary{ background:var(--leaf); color:white; }
   .btn-ghost{ background:var(--sky-soft); color:var(--ink); }
   .empty-state{ text-align:center; padding:40px 10px; color:var(--ink-soft); }
+  .icon-btn.locked svg{ stroke:var(--coral); }
+  .pw-modal input[type=password]{
+    width:100%; padding:10px 12px; border-radius:10px; border:2px solid var(--sky-deep);
+    margin-bottom:8px; font-family:'Nunito'; font-size:0.95rem; letter-spacing:2px; outline:none;
+  }
+  .pw-modal input[type=password]:focus{ border-color:var(--leaf); }
+  .pw-error{ color:#B5501E; font-size:0.8rem; font-weight:700; min-height:16px; margin-bottom:8px; }
 
   /* Error toast */
   .toast{
@@ -266,6 +273,9 @@
     </div>
     <div class="header-right">
       <div class="status-pill" id="dateChip"><span class="dot"></span><span id="dateChipText"></span></div>
+      <button class="icon-btn locked" id="lockBtn" title="Adding/deleting is locked">
+        <svg id="lockIcon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </button>
     </div>
   </header>
 
@@ -366,6 +376,19 @@
   </div>
 </div>
 
+<!-- Password modal (guards adding/deleting) -->
+<div class="overlay" id="pwOverlay">
+  <div class="modal pw-modal">
+    <h3>Parent password</h3>
+    <input type="password" id="pwInput" placeholder="Enter password" autocomplete="off">
+    <div class="pw-error" id="pwError"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="pwCancelBtn">Cancel</button>
+      <button class="btn-primary" id="pwSubmitBtn">Unlock</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* =========================================================
    SUPABASE CONFIG
@@ -395,6 +418,15 @@ const NEG_BEHAVIORS = [
 ];
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
+/* =========================================================
+   PARENT PASSWORD — required to add or delete data.
+   Viewing the app never requires this. Change it to
+   whatever you like before deploying.
+   ========================================================= */
+const ADMIN_PASSWORD = 'bloom123';
+/* ========================================================= */
+
+
 let sb = null;
 let state = { kids: [], logs: [], planner: {} };
 let activeKidId = null;
@@ -416,6 +448,62 @@ function showError(msg){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('show'), 5000);
 }
+
+/* ---------- Password gate for add/delete actions ---------- */
+let isUnlocked = false;
+let pendingAction = null;
+
+function updateLockIcon(){
+  const btn = document.getElementById('lockBtn');
+  const icon = document.getElementById('lockIcon');
+  if(isUnlocked){
+    btn.classList.remove('locked');
+    btn.title = 'Unlocked — tap to lock again';
+    icon.innerHTML = '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>';
+  } else {
+    btn.classList.add('locked');
+    btn.title = 'Adding/deleting is locked';
+    icon.innerHTML = '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
+  }
+}
+
+function requireAuth(action){
+  if(isUnlocked){ action(); return; }
+  pendingAction = action;
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwError').textContent = '';
+  document.getElementById('pwOverlay').classList.add('show');
+  document.getElementById('pwInput').focus();
+}
+
+function submitPassword(){
+  const val = document.getElementById('pwInput').value;
+  if(val === ADMIN_PASSWORD){
+    isUnlocked = true;
+    updateLockIcon();
+    document.getElementById('pwOverlay').classList.remove('show');
+    const action = pendingAction;
+    pendingAction = null;
+    if(action) action();
+  } else {
+    document.getElementById('pwError').textContent = 'Incorrect password.';
+    document.getElementById('pwInput').value = '';
+    document.getElementById('pwInput').focus();
+  }
+}
+document.getElementById('pwSubmitBtn').onclick = submitPassword;
+document.getElementById('pwInput').onkeydown = (e) => { if(e.key === 'Enter') submitPassword(); };
+document.getElementById('pwCancelBtn').onclick = () => {
+  pendingAction = null;
+  document.getElementById('pwOverlay').classList.remove('show');
+};
+document.getElementById('lockBtn').onclick = () => {
+  if(isUnlocked){
+    isUnlocked = false;
+    updateLockIcon();
+  }
+};
+updateLockIcon();
 
 /* ---------- Boot ---------- */
 function isConfigured(){
@@ -511,14 +599,14 @@ function renderToday(){
     const btn = document.createElement('button');
     btn.className = 'behavior-btn pos';
     btn.innerHTML = `${escapeHtml(b.label)}<span class="delta">+${b.delta} pts</span>`;
-    btn.onclick = () => logBehavior(b.label, b.delta);
+    btn.onclick = () => requireAuth(() => logBehavior(b.label, b.delta));
     posGrid.appendChild(btn);
   });
   NEG_BEHAVIORS.forEach(b => {
     const btn = document.createElement('button');
     btn.className = 'behavior-btn neg';
     btn.innerHTML = `${escapeHtml(b.label)}<span class="delta">${b.delta} pts</span>`;
-    btn.onclick = () => logBehavior(b.label, b.delta);
+    btn.onclick = () => requireAuth(() => logBehavior(b.label, b.delta));
     negGrid.appendChild(btn);
   });
 
@@ -542,7 +630,7 @@ function renderToday(){
         <span class="time">${l.time}</span>
         <button class="del" title="Remove">✕</button>
       </div>`;
-    item.querySelector('.del').onclick = () => removeLog(l.id);
+    item.querySelector('.del').onclick = () => requireAuth(() => removeLog(l.id));
     list.appendChild(item);
   });
 }
@@ -576,14 +664,14 @@ function renderPlanner(){
     col.querySelectorAll('.plan-item').forEach(row => {
       const id = row.getAttribute('data-id');
       row.querySelector('input[type=checkbox]').onchange = (e) => togglePlanItem(day, id, e.target.checked);
-      row.querySelector('.rm').onclick = () => removePlanItem(day, id);
+      row.querySelector('.rm').onclick = () => requireAuth(() => removePlanItem(day, id));
     });
     const addInput = col.querySelector('.add-plan input');
     const addBtn = col.querySelector('.add-plan button');
     const doAdd = () => {
       const val = addInput.value.trim();
       if(!val) return;
-      addPlanItem(day, val);
+      requireAuth(() => addPlanItem(day, val));
       addInput.value = '';
     };
     addBtn.onclick = doAdd;
@@ -713,7 +801,7 @@ document.getElementById('noteAddBtn').onclick = () => {
   const input = document.getElementById('noteInput');
   const val = input.value.trim();
   if(!val || !activeKidId) return;
-  logBehavior(val, 0);
+  requireAuth(() => logBehavior(val, 0));
   input.value = '';
 };
 document.getElementById('noteInput').onkeydown = (e) => { if(e.key === 'Enter') document.getElementById('noteAddBtn').click(); };
@@ -782,18 +870,20 @@ function openKidModal(){
   document.getElementById('kidNameInput').focus();
 }
 document.getElementById('kidCancelBtn').onclick = () => document.getElementById('kidOverlay').classList.remove('show');
-document.getElementById('kidSaveBtn').onclick = async () => {
+document.getElementById('kidSaveBtn').onclick = () => {
   const name = document.getElementById('kidNameInput').value.trim();
   if(!name) return;
-  const { data, error } = await sb.from('kids').insert({
-    name, color: pendingColor, points: 0, goal: 20, reward: ''
-  }).select().single();
-  if(error){ showError(error.message); return; }
-  const kid = { id: data.id, name, color: pendingColor, points: 0, goal: 20, reward: '' };
-  state.kids.push(kid);
-  activeKidId = kid.id;
-  document.getElementById('kidOverlay').classList.remove('show');
-  renderAll();
+  requireAuth(async () => {
+    const { data, error } = await sb.from('kids').insert({
+      name, color: pendingColor, points: 0, goal: 20, reward: ''
+    }).select().single();
+    if(error){ showError(error.message); return; }
+    const kid = { id: data.id, name, color: pendingColor, points: 0, goal: 20, reward: '' };
+    state.kids.push(kid);
+    activeKidId = kid.id;
+    document.getElementById('kidOverlay').classList.remove('show');
+    renderAll();
+  });
 };
 
 /* ---------- Tabs ---------- */
