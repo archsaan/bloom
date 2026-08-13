@@ -5,6 +5,7 @@
 <title>Bloom — Kids Behavior Tracker & Planner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="env.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap');
 
@@ -234,9 +235,9 @@
 <div class="center-screen" id="configScreen" style="display:none;">
   <div class="config-card">
     <h2>Setup needed</h2>
-    <p>This copy of Bloom isn't connected to a database yet. Open this file's code and replace the two placeholders near the top of the <code>&lt;script&gt;</code> tag:</p>
-    <p><code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code></p>
-    <p>You'll find both on your Supabase project under <b>Project Settings → API</b>. See the setup guide for the full walkthrough, including the SQL to create your tables.</p>
+    <p>This copy of Bloom can't find its Supabase configuration.</p>
+    <p>If you're on Netlify: check that <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> are set under <b>Site settings → Environment variables</b>, and that <code>netlify.toml</code> is present in your repo, then trigger a fresh deploy.</p>
+    <p>If you're testing locally without Netlify, temporarily hardcode your values directly in the <code>SUPABASE_URL</code> / <code>SUPABASE_ANON_KEY</code> constants near the top of the <code>&lt;script&gt;</code> tag.</p>
   </div>
 </div>
 
@@ -377,11 +378,15 @@
 
 <script>
 /* =========================================================
-   SUPABASE CONFIG — replace these two values with your own
-   (Supabase project → Project Settings → API)
+   SUPABASE CONFIG
+   Loaded from env.js, which Netlify generates at build time
+   from your SUPABASE_URL / SUPABASE_ANON_KEY environment
+   variables (see netlify.toml). Nothing to edit here.
+   For local testing without Netlify, you can temporarily
+   hardcode values below instead.
    ========================================================= */
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = (window.ENV && window.ENV.SUPABASE_URL) || '';
+const SUPABASE_ANON_KEY = (window.ENV && window.ENV.SUPABASE_ANON_KEY) || '';
 /* ========================================================= */
 
 const COLORS = ['#4C9A6A','#3B8FA8','#E8A93A','#E8734A','#8B6FC9','#D4599B'];
@@ -400,7 +405,7 @@ const NEG_BEHAVIORS = [
 ];
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-let supabase = null;
+let sb = null;
 let state = { kids: [], logs: [], planner: {} };
 let activeKidId = null;
 let activeTab = 'today';
@@ -415,8 +420,7 @@ function escapeHtml(s){
 
 /* ---------- Boot ---------- */
 function isConfigured(){
-  return SUPABASE_URL && SUPABASE_ANON_KEY &&
-    !SUPABASE_URL.includes('YOUR_SUPABASE') && !SUPABASE_ANON_KEY.includes('YOUR_SUPABASE');
+  return !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
 
 async function boot(){
@@ -424,12 +428,12 @@ async function boot(){
     document.getElementById('configScreen').style.display = 'flex';
     return;
   }
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session } } = await sb.auth.getSession();
   if(session){ await enterApp(session); } else { showLogin(); }
 
-  supabase.auth.onAuthStateChange(async (event, session) => {
+  sb.auth.onAuthStateChange(async (event, session) => {
     if(session && !currentUserId){ await enterApp(session); }
     if(!session){ showLogin(); }
   });
@@ -456,22 +460,22 @@ document.getElementById('loginBtn').onclick = async () => {
   if(!email){ msg.textContent = 'Enter your email first.'; return; }
   const btn = document.getElementById('loginBtn');
   btn.disabled = true; btn.textContent = 'Sending…';
-  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
   btn.disabled = false; btn.textContent = 'Send magic link';
   msg.textContent = error ? ('Error: ' + error.message) : 'Check your email for a login link ✉️';
 };
 document.getElementById('loginEmail').onkeydown = (e) => { if(e.key === 'Enter') document.getElementById('loginBtn').click(); };
 
 document.getElementById('signOutBtn').onclick = async () => {
-  await supabase.auth.signOut();
+  await sb.auth.signOut();
 };
 
 /* ---------- Data loading ---------- */
 async function loadAllData(){
   const [kidsRes, logsRes, plannerRes] = await Promise.all([
-    supabase.from('kids').select('*').order('created_at', { ascending: true }),
-    supabase.from('logs').select('*').order('created_at', { ascending: false }).limit(500),
-    supabase.from('planner_items').select('*').order('created_at', { ascending: true }),
+    sb.from('kids').select('*').order('created_at', { ascending: true }),
+    sb.from('logs').select('*').order('created_at', { ascending: false }).limit(500),
+    sb.from('planner_items').select('*').order('created_at', { ascending: true }),
   ]);
 
   if(kidsRes.error) console.error(kidsRes.error);
@@ -710,13 +714,13 @@ async function logBehavior(label, delta){
   const log_date = todayStr();
   const log_time = now.toTimeString().slice(0,5);
 
-  const { data, error } = await supabase.from('logs').insert({
+  const { data, error } = await sb.from('logs').insert({
     kid_id: activeKidId, user_id: currentUserId, label, delta, log_date, log_time
   }).select().single();
   if(error){ console.error(error); return; }
 
   const newPoints = Math.max(0, kid.points + delta);
-  const { error: updErr } = await supabase.from('kids').update({ points: newPoints }).eq('id', activeKidId);
+  const { error: updErr } = await sb.from('kids').update({ points: newPoints }).eq('id', activeKidId);
   if(updErr) console.error(updErr);
 
   kid.points = newPoints;
@@ -727,13 +731,13 @@ async function logBehavior(label, delta){
 async function removeLog(id){
   const log = state.logs.find(l => l.id === id);
   if(!log) return;
-  const { error } = await supabase.from('logs').delete().eq('id', id);
+  const { error } = await sb.from('logs').delete().eq('id', id);
   if(error){ console.error(error); return; }
 
   const kid = kidById(log.kidId);
   if(kid){
     const newPoints = Math.max(0, kid.points - log.delta);
-    const { error: updErr } = await supabase.from('kids').update({ points: newPoints }).eq('id', kid.id);
+    const { error: updErr } = await sb.from('kids').update({ points: newPoints }).eq('id', kid.id);
     if(updErr) console.error(updErr);
     kid.points = newPoints;
   }
@@ -751,7 +755,7 @@ document.getElementById('noteAddBtn').onclick = () => {
 document.getElementById('noteInput').onkeydown = (e) => { if(e.key === 'Enter') document.getElementById('noteAddBtn').click(); };
 
 async function addPlanItem(day, text){
-  const { data, error } = await supabase.from('planner_items').insert({
+  const { data, error } = await sb.from('planner_items').insert({
     user_id: currentUserId, day, text, done_dates: []
   }).select().single();
   if(error){ console.error(error); return; }
@@ -760,7 +764,7 @@ async function addPlanItem(day, text){
   renderPlanner();
 }
 async function removePlanItem(day, id){
-  const { error } = await supabase.from('planner_items').delete().eq('id', id);
+  const { error } = await sb.from('planner_items').delete().eq('id', id);
   if(error){ console.error(error); return; }
   state.planner[day] = (state.planner[day]||[]).filter(i => i.id !== id);
   renderPlanner();
@@ -773,7 +777,7 @@ async function togglePlanItem(day, id, checked){
   if(checked){ if(!doneDates.includes(t)) doneDates = [...doneDates, t]; }
   else{ doneDates = doneDates.filter(d => d !== t); }
 
-  const { error } = await supabase.from('planner_items').update({ done_dates: doneDates }).eq('id', id);
+  const { error } = await sb.from('planner_items').update({ done_dates: doneDates }).eq('id', id);
   if(error){ console.error(error); return; }
   item.doneDates = doneDates;
   renderPlanner();
@@ -783,7 +787,7 @@ document.getElementById('goalPts').onchange = async (e) => {
   const kid = kidById(activeKidId);
   if(!kid) return;
   const goal = Math.max(1, parseInt(e.target.value) || 20);
-  const { error } = await supabase.from('kids').update({ goal }).eq('id', kid.id);
+  const { error } = await sb.from('kids').update({ goal }).eq('id', kid.id);
   if(error){ console.error(error); return; }
   kid.goal = goal;
   renderGarden();
@@ -792,7 +796,7 @@ document.getElementById('goalReward').onchange = async (e) => {
   const kid = kidById(activeKidId);
   if(!kid) return;
   const reward = e.target.value;
-  const { error } = await supabase.from('kids').update({ reward }).eq('id', kid.id);
+  const { error } = await sb.from('kids').update({ reward }).eq('id', kid.id);
   if(error){ console.error(error); return; }
   kid.reward = reward;
 };
@@ -817,7 +821,7 @@ document.getElementById('kidCancelBtn').onclick = () => document.getElementById(
 document.getElementById('kidSaveBtn').onclick = async () => {
   const name = document.getElementById('kidNameInput').value.trim();
   if(!name) return;
-  const { data, error } = await supabase.from('kids').insert({
+  const { data, error } = await sb.from('kids').insert({
     user_id: currentUserId, name, color: pendingColor, points: 0, goal: 20, reward: ''
   }).select().single();
   if(error){ console.error(error); return; }
