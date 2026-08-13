@@ -177,6 +177,14 @@
   .goal-row{ display:flex; align-items:center; gap:10px; margin-top:10px; }
   .goal-row input[type=number]{ width:70px; padding:6px 8px; border-radius:8px; border:1px solid #C6DCD5; font-family:'Nunito'; }
   .goal-row input[type=text]{ flex:1; padding:6px 8px; border-radius:8px; border:1px solid #C6DCD5; font-family:'Nunito'; }
+  .save-btn{
+    border:none; background:var(--leaf); color:white; font-family:'Baloo 2'; font-weight:700;
+    font-size:0.85rem; padding:9px 20px; border-radius:10px; cursor:pointer;
+    transition: transform .12s ease, opacity .15s ease;
+  }
+  .save-btn:active{ transform: scale(0.96); }
+  .save-status{ font-size:0.8rem; color:var(--leaf-deep); font-weight:700; opacity:0; transition:opacity .2s ease; }
+  .save-status.show{ opacity:1; }
   .progress-track{ background:var(--sky-soft); border-radius:999px; height:14px; width:100%; overflow:hidden; margin:10px 0; }
   .progress-fill{ background:linear-gradient(90deg, var(--leaf), var(--sun)); height:100%; border-radius:999px; transition:width .4s ease; }
 
@@ -334,6 +342,10 @@
               <input type="number" id="goalPts" min="1" value="20">
               <span style="font-size:0.85rem; color:var(--ink-soft);">pts →</span>
               <input type="text" id="goalReward" placeholder="reward, e.g. movie night">
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+              <button id="saveGoalBtn" class="save-btn">Save</button>
+              <span class="save-status" id="saveStatus"></span>
             </div>
           </div>
         </div>
@@ -776,8 +788,9 @@ async function logBehavior(label, delta){
   if(error){ showError(error.message); return; }
 
   const newPoints = Math.max(0, kid.points + delta);
-  const { error: updErr } = await sb.from('kids').update({ points: newPoints }).eq('id', activeKidId);
-  if(updErr) showError(updErr.message);
+  const { data: updData, error: updErr } = await sb.from('kids').update({ points: newPoints }).eq('id', activeKidId).select();
+  if(updErr){ showError(updErr.message); }
+  else if(!updData || !updData.length){ showError('Points did not save — check that Row Level Security is disabled on the kids table.'); }
 
   kid.points = newPoints;
   state.logs.unshift({ id: data.id, kidId: activeKidId, date: log_date, label, delta, time: log_time });
@@ -793,8 +806,9 @@ async function removeLog(id){
   const kid = kidById(log.kidId);
   if(kid){
     const newPoints = Math.max(0, kid.points - log.delta);
-    const { error: updErr } = await sb.from('kids').update({ points: newPoints }).eq('id', kid.id);
-    if(updErr) showError(updErr.message);
+    const { data: updData, error: updErr } = await sb.from('kids').update({ points: newPoints }).eq('id', kid.id).select();
+    if(updErr){ showError(updErr.message); }
+    else if(!updData || !updData.length){ showError('Points did not save — check that Row Level Security is disabled on the kids table.'); }
     kid.points = newPoints;
   }
   state.logs = state.logs.filter(l => l.id !== id);
@@ -833,28 +847,41 @@ async function togglePlanItem(day, id, checked){
   if(checked){ if(!doneDates.includes(t)) doneDates = [...doneDates, t]; }
   else{ doneDates = doneDates.filter(d => d !== t); }
 
-  const { error } = await sb.from('planner_items').update({ done_dates: doneDates }).eq('id', id);
+  const { data: updData, error } = await sb.from('planner_items').update({ done_dates: doneDates }).eq('id', id).select();
   if(error){ showError(error.message); return; }
+  if(!updData || !updData.length){ showError('Checkbox did not save — check that Row Level Security is disabled on planner_items.'); return; }
   item.doneDates = doneDates;
   renderPlanner();
 }
 
-document.getElementById('goalPts').onchange = async (e) => {
+async function saveGoalAndReward(){
   const kid = kidById(activeKidId);
   if(!kid) return;
-  const goal = Math.max(1, parseInt(e.target.value) || 20);
-  const { error } = await sb.from('kids').update({ goal }).eq('id', kid.id);
+  const goal = Math.max(1, parseInt(document.getElementById('goalPts').value) || 20);
+  const reward = document.getElementById('goalReward').value;
+
+  const { data: updData, error } = await sb.from('kids')
+    .update({ goal, reward })
+    .eq('id', kid.id)
+    .select();
+
   if(error){ showError(error.message); return; }
+  if(!updData || !updData.length){
+    showError('Goal/reward did not save — check that Row Level Security is disabled on the kids table.');
+    return;
+  }
   kid.goal = goal;
-  renderGarden();
-};
-document.getElementById('goalReward').onchange = async (e) => {
-  const kid = kidById(activeKidId);
-  if(!kid) return;
-  const reward = e.target.value;
-  const { error } = await sb.from('kids').update({ reward }).eq('id', kid.id);
-  if(error){ showError(error.message); return; }
   kid.reward = reward;
+
+  const status = document.getElementById('saveStatus');
+  status.textContent = 'Saved ✓';
+  status.classList.add('show');
+  setTimeout(() => status.classList.remove('show'), 2000);
+}
+
+document.getElementById('saveGoalBtn').onclick = () => {
+  if(!activeKidId) return;
+  requireAuth(saveGoalAndReward);
 };
 
 /* ---------- Kid modal ---------- */
