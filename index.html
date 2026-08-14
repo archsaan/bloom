@@ -158,6 +158,10 @@
   .log-item .time{ color:var(--ink-soft); font-size:0.75rem; }
   .log-item .del{ background:none; border:none; color:#B9C4C2; cursor:pointer; font-size:0.9rem; }
   .empty{ color:var(--ink-soft); font-size:0.88rem; padding:10px 2px; }
+  .day-group{ margin-bottom:14px; }
+  .day-group:last-child{ margin-bottom:0; }
+  .day-group-label{ font-family:'Baloo 2'; font-weight:700; font-size:0.82rem; color:var(--leaf-deep); margin-bottom:6px; }
+  .day-group .log-list{ max-height:none; margin-top:0; }
 
   /* Planner */
   .week-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; }
@@ -310,6 +314,18 @@
         <h2>Today's log</h2>
         <div class="sub" id="todayDateLabel"></div>
         <div class="log-list" id="logList"></div>
+      </div>
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div>
+            <h2>Past logs</h2>
+            <div class="sub" style="margin-bottom:0;">Everything logged before today.</div>
+          </div>
+          <button class="save-btn" id="pastLogsToggle" style="padding:8px 16px; font-size:0.8rem;">Show</button>
+        </div>
+        <div id="pastLogsWrap" style="display:none; margin-top:14px;">
+          <div id="pastLogsList"></div>
+        </div>
       </div>
     </div>
   </section>
@@ -649,7 +665,61 @@ function renderToday(){
     item.querySelector('.del').onclick = () => requireAuth(() => removeLog(l.id));
     list.appendChild(item);
   });
+
+  renderPastLogs();
 }
+
+function renderPastLogs(){
+  const wrap = document.getElementById('pastLogsList');
+  if(!wrap) return;
+  const today = todayStr();
+  const past = state.logs.filter(l => l.kidId === activeKidId && l.date !== today);
+
+  if(!past.length){
+    wrap.innerHTML = '<div class="empty">No earlier logs yet.</div>';
+    return;
+  }
+
+  const byDate = {};
+  past.forEach(l => { (byDate[l.date] = byDate[l.date] || []).push(l); });
+  const dates = Object.keys(byDate).sort((a,b) => b.localeCompare(a));
+
+  wrap.innerHTML = '';
+  dates.forEach(date => {
+    const dayLogs = byDate[date].sort((a,b) => b.time.localeCompare(a.time));
+    const group = document.createElement('div');
+    group.className = 'day-group';
+    const label = new Date(date + 'T00:00:00').toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
+    group.innerHTML = `<div class="day-group-label">${label}</div><div class="log-list"></div>`;
+    const list = group.querySelector('.log-list');
+    dayLogs.forEach(l => {
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      const badgeClass = l.delta > 0 ? 'pos' : (l.delta < 0 ? 'neg' : '');
+      const badgeText = l.delta === 0 ? 'note' : (l.delta > 0 ? '+'+l.delta : l.delta);
+      item.innerHTML = `
+        <div class="left">
+          <span class="badge ${badgeClass}">${badgeText}</span>
+          <span>${escapeHtml(l.label)}</span>
+        </div>
+        <div class="left">
+          <span class="time">${l.time}</span>
+          <button class="del" title="Remove">✕</button>
+        </div>`;
+      item.querySelector('.del').onclick = () => requireAuth(() => removeLog(l.id));
+      list.appendChild(item);
+    });
+    wrap.appendChild(group);
+  });
+}
+
+document.getElementById('pastLogsToggle').onclick = () => {
+  const wrap = document.getElementById('pastLogsWrap');
+  const btn = document.getElementById('pastLogsToggle');
+  const showing = wrap.style.display !== 'none';
+  wrap.style.display = showing ? 'none' : 'block';
+  btn.textContent = showing ? 'Show' : 'Hide';
+};
 
 function renderPlanner(){
   const grid = document.getElementById('weekGrid');
